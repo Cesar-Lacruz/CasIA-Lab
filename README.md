@@ -56,7 +56,7 @@ CasIA/
 │   └── benchmarks/                  # Task batteries (FOLIO subsets, HumanEval variants, TruthfulQA)
 ├── results/                         # Experimental results and analysis
 ├── CITATION.cff                     # Citation metadata
-├── LICENSE                          # NC CC BY 4.0
+├── LICENSE                          # CC BY 4.0
 └── README.md
 ```
 
@@ -108,6 +108,9 @@ If you use this work, please cite:
   url       = {https://github.com/cesar-lacruz/CasIA}
 }
 ```
+
+License
+This work is licensed under Creative Commons Attribution 4.0 International (CC BY 4.0). You are free to share and adapt this material for any purpose, provided appropriate credit is given.
 
 ## Author
 
