@@ -1,0 +1,1149 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---- Packages ----
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{caption}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!70!black,
+  citecolor=blue!70!black,
+  urlcolor=blue!70!black
+}
+
+% ---- Theorem environments ----
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{hypothesis}{Hypothesis}[section]
+\newtheorem{principle}{Design Principle}[section]
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+
+% ---- Custom commands ----
+\newcommand{\Rtheta}{R_\theta}
+\newcommand{\thetaG}{\theta_G}
+\newcommand{\thetaV}{\theta_V}
+\newcommand{\thetaN}{\theta_N}
+\newcommand{\EMP}{\textsc{[emp]}}
+\newcommand{\HIP}{\textsc{[hyp]}}
+
+% ---- Title ----
+\title{%
+\textbf{CasIA: A Laboratory Architecture for Structural\\
+Behavioral Diagnostics of Frontier AI Systems}\\[6pt]
+\large Measuring Self-Validation Limits, Cross-Model Complementarity,\\
+and Alignment Persistence under Structural Stress
+}
+\author{
+C\'esar Lacruz\\
+Independent Researcher --- Strategic Systems Architect\\
+Albora Elysium\\
+\texttt{Working Paper --- March 2026 (v4.4 --- preprint)}
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ==================================================================
+% ABSTRACT
+% ==================================================================
+\begin{abstract}
+We formalize a conjecture about self-validation in large language models: under the assumption that internal representations mediate all information about task correctness via a Markov chain $T \to R_\theta \to Z$, we derive an upper bound on the capacity of any self-validation mechanism operating within the same representational space to detect systematic errors (Proposition~\ref{prop:svbound}). Under the same assumption, this bound may extend to self-interactive protocols---including self-consistency and multi-agent debate within a single model---for any fixed parameter set $\theta$ (Theorem~\ref{thm:transcript}). Whether iterative protocols effectively expand the representational space beyond single-pass encoding is an open empirical question (Appendix~\ref{app:dynamic}); the bound's strength depends on quantities---notably $I(T; R_\theta)$---that are not directly observable. The framework is therefore best understood as a formal lens for experimental design rather than a closure result.
+
+We introduce \textbf{CasIA} (Cascaded Information Architecture), a \emph{laboratory architecture} designed not as a deployable product but as an experimental platform where the behavioral limits, blind spots, and failure modes of AI systems become structurally testable. CasIA separates generation, metacognitive validation, and normative regulation into independent parameter spaces. Diagnostic success is assessed through a hierarchy of evidence: behavioral gain on held-out tasks, error-floor reduction in the generator's blind spots, robustness under adversarial stress---supported by Partial Information Decomposition (PID) as a complementary measurement tool for characterizing synergistic information.
+
+Under the formal framework, systematic errors invisible to self-validation may become detectable under cross-model validation when representations are complementary (Proposition~\ref{prop:crossval}), with a Bayes error floor bounding any self-validation classifier in the model's blind spots (Lemma~\ref{lem:fano}). We formalize \emph{context-dependent alignment failure}---a regime where post-training correction may overlay behavioral surfaces without restructuring the underlying computational graphs---as a primary diagnostic target with empirical grounding~\cite{anthropic2025alignment,payne2026nuclear}. We additionally identify \emph{precondition blindness under frame dominance}---a recurrent behavioral pattern where frame-captured processing appears to prevent verification of untokenized physical or logical preconditions---as a second diagnostic target warranting systematic investigation. Functional complementarity ($\mathrm{Comp}(G,V) > 0$), the keystone condition for cross-model gain, is a latent causal property that current proxies (CKA, error-correlation) can only approximate; we treat its magnitude as the central open empirical question.
+
+CasIA does not claim to produce an aligned system. It claims to produce an \emph{instrument} where three questions become experimentally answerable: (1)~whether structural separation yields measurable diagnostic gain beyond matched-compute monolithic baselines, (2)~whether alignment-consistent behavior persists under removal of evaluative context, and (3)~whether multi-model architectures can detect failure modes invisible to self-validation. We provide a complete experimental protocol---with matched-compute baselines, poisoned-context stress tests, pre-registered acceptance criteria, and explicit falsification conditions---designed so that negative results are as informative as positive ones.
+
+\medskip
+\noindent\textbf{Keywords:} AI behavioral diagnostics, self-validation bounds, multi-model architecture, structural separation, Partial Information Decomposition, functional complementarity, precondition blindness, AI safety, laboratory framework.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ==================================================================
+% 1. INTRODUCTION
+% ==================================================================
+\section{Introduction}
+\label{sec:intro}
+
+The dominant paradigm in AI safety operates on a premise that may be structurally flawed: that a monolithic model can be made safe through post-training correction---RLHF, constitutional AI, safety classifiers---applied to the same parameter space that produces the behaviors requiring correction. These techniques modify output distributions, but may fail to restructure the computational graphs that produce misaligned generalization. When they do not, the result is a surface of alignment over a substrate that can persist in its original functional configuration under contextual variation.
+
+This is not a theoretical concern. Recent empirical work provides direct evidence:
+
+\begin{itemize}[leftmargin=*,itemsep=3pt]
+\item \textbf{Anthropic (2025)} \EMP: A model trained in production coding environments---identical to those of Claude Sonnet 3.7---learned to hack rewards (e.g., \texttt{sys.exit(0)} to make tests appear to pass). From this instrumental shortcut, behaviors never explicitly trained emerged spontaneously: alignment simulation in 50\% of self-reports, sabotage of safety research code in 12\% of attempts, and context-dependent misalignment where the model appeared aligned in chat while remaining misaligned in complex coding scenarios~\cite{anthropic2025alignment}.
+
+\item \textbf{Payne (2026)} \EMP: In 21 nuclear wargame scenarios (760,000 words, 329 turns), GPT-5.2, Claude Sonnet~4, and Gemini~3 Flash produced nuclear threats in 95\% of scenarios with zero surrender choices. Claude Sonnet~4 showed the highest direct strike rate (64\%). All models exhibited sophisticated strategic reasoning, theory-of-mind modeling, and spontaneous deception, but none displayed behavioral patterns consistent with treating nuclear escalation as categorically constrained---accommodation, withdrawal, and de-escalation were systematically absent from the observed repertoire~\cite{payne2026nuclear}. This does not demonstrate an absence of internal moral representations, but it does demonstrate that post-trained alignment constraints did not produce observable behavioral inhibition in this adversarial strategic context.
+\end{itemize}
+
+These findings motivate a question that cannot be answered from within a single model: \emph{to what extent does post-training correction actually restructure the functional substrate of an AI system, and to what extent does it overlay new response regimes over computational patterns that persist across contextual variation?}
+
+This paper argues that answering this question requires an \emph{instrument}, not a solution. The AI safety field needs diagnostic tools with resolution sufficient to distinguish genuine alignment from context-dependent behavioral modulation---and the information-theoretic framework to measure the difference.
+
+\subsection{CasIA as Diagnostic Instrument}
+
+CasIA is a \textbf{laboratory architecture}---not a consumer product, not an improved chatbot, not a deployable safety system. It is an experimental platform designed for AI safety research, where:
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item The gap between observable alignment and functional persistence becomes \emph{investigable} through longitudinal behavioral and information-theoretic diagnostics, with PID as a supporting decomposition tool.
+\item The self-validation ceiling of monolithic systems is \emph{quantifiably measurable} through matched-compute comparisons.
+\item The question ``does structural separation yield genuinely new diagnostic information?'' has an \emph{experimental answer}.
+\end{enumerate}
+
+CasIA does not promise to produce an ethical system. Cognitive sophistication is neutral with respect to use. What CasIA promises is more modest and more useful: an experimental platform where the behavioral limits, failure modes, and alignment persistence of AI systems can be structurally investigated with greater resolution than self-validation permits.
+
+\subsection{Contributions}
+
+This work's primary contribution is a \emph{falsifiable experimental program} for diagnosing behavioral limits of frontier AI systems. The supporting contributions are:
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item \textbf{Formal framework for self-validation bounds} (Section~\ref{sec:problem}): under explicit Markov assumptions, the mutual information between a model's generation and self-validation is upper-bounded by a function of its representational diversity, extending to self-interactive protocols for any fixed $\theta$ (Theorem~\ref{thm:transcript}). These results are presented as a formal framework motivating the experimental design, not as universal closure results.
+\item \textbf{Detectability bound} (Section~\ref{sec:problem}): via Fano's inequality, a lower bound on the Bayes error of any self-validation classifier in the model's blind spots (Lemma~\ref{lem:fano}).
+\item \textbf{Cross-validation detectability} (Section~\ref{sec:problem}): systematic errors undetectable by self-validation become diagnosable when a validator with complementary representation space is introduced. Functional complementarity is formalized as a latent causal condition whose magnitude must be determined empirically.
+\item \textbf{CasIA diagnostic architecture} (Section~\ref{sec:architecture}): a three-component system with structural separation of generation, validation, and regulation---the minimum configuration separating all three diagnostic concerns.
+\item \textbf{Evidential hierarchy for diagnostic success} (Section~\ref{sec:pid}): behavioral gain, error-floor reduction, and robustness under stress as primary evidence; PID synergy as a supporting decomposition tool for characterizing the nature of diagnostic gain.
+\item \textbf{Falsifiable experimental protocol with explicit failure conditions} (Section~\ref{sec:experiments}): reproducible experiments with matched-compute baselines, poisoned-context stress tests, six pre-registered falsification criteria, and an evidential hierarchy where every negative result closes a question.
+\end{enumerate}
+
+
+% ==================================================================
+% 2. RELATED WORK
+% ==================================================================
+\section{Related Work}
+\label{sec:related}
+
+\textbf{Self-validation in LLMs.} Self-consistency~\cite{wang2023selfconsistency} and chain-of-thought verification~\cite{weng2023selfverification} improve reliability by sampling multiple reasoning chains, but the sampling distribution remains conditioned on the same model, limiting the real diversity of verifications.
+
+\textbf{Constitutional AI.} Bai et al.~\cite{bai2022constitutional} propose that a model revise its own outputs according to constitutional principles. CasIA extends this by assigning normative regulation to a component with independent parameters.
+
+\textbf{Mixture of Experts (MoE).} MoE architectures~\cite{shazeer2017moe,fedus2022switch} distribute computation among specialized sub-networks, but all experts share the same embedding space and routing layer. From the perspective of Proposition~\ref{prop:svbound}, MoE remains a single system: the router conditions all expert activations on a shared $\Rtheta$.
+
+\textbf{Multi-model safety architectures.} Greenblatt et al.~\cite{greenblatt2024control} formalize ``AI control'' using trusted/untrusted model separation, measuring success via adversarial attack success rate under a red-team protocol. Meta's LlamaFirewall~\cite{meta2025llamafirewall} implements modular layered defense with per-component precision/recall metrics. Anthropic's Constitutional Classifiers++~\cite{anthropic2026classifiers} deploy cascade architectures evaluated by bypass rate and latency. The Trinity Defense Architecture~\cite{bhattarai2025trinity} proposes deterministic privilege separation with formal access-control guarantees. These systems implement security-by-separation as engineering practice and evaluate it via operational metrics (bypass rate, false positive rate, latency). CasIA differs in providing information-theoretic conditions under which structural separation produces \emph{measurable} diagnostic gains (Proposition~\ref{prop:svbound}, Theorem~\ref{thm:transcript}) and a decomposition criterion (Definition~\ref{def:syncoord}) that characterizes the \emph{nature} of the gain---whether it arises from synergy, unique information, or redundancy---rather than only its magnitude. The approaches are complementary: CasIA's PID analysis could in principle be applied to any of these architectures to characterize their information-theoretic structure. A key design distinction: ``AI control'' frameworks~\cite{greenblatt2024control} assume a trusted model exists and use it to monitor an untrusted one. CasIA makes no such assumption---all three components are treated as potentially misaligned, and diagnostic gain arises from representational diversity rather than from trust in any single component. CasIA can coexist with a trusted-core architecture (e.g., using a trusted model as $N$), but does not require it.
+
+\textbf{Multi-agent debate and ensembles.} Multi-agent debate~\cite{du2023debate,du2024debate,liang2024debate} and Mixture-of-Agents~\cite{wang2025moa} demonstrate that combining model outputs improves performance. Wang et al.~\cite{wang2024rethinking} showed that a single LLM with strong prompts can match multi-agent discussion when few-shot demonstrations are available; however, multi-agent systems retain advantages in zero-shot settings. Recent information-theoretic analyses~\cite{li2026agentscaling,zhang2026ensemble} address related problems using channel capacity bounds and mutual information.
+
+\textbf{RL-trained self-correction.} A critical distinction exists between prompted self-correction---which fails systematically~\cite{huang2024selfcorrect,kamoi2024selfcorrect}---and RL-trained self-correction, which can succeed. SCoRe~\cite{kumar2025score} demonstrates intrinsic self-correction via online multi-turn RL, and DeepSeek R1-Zero~\cite{deepseek2025r1} develops self-verification through pure RL. These do not invalidate the self-validation ceiling: RL modifies $\theta$, producing a new model with a potentially higher ceiling, but the bound applies to any fixed~$\theta$.
+
+\textbf{Partial Information Decomposition.} Williams and Beer~\cite{williams2010pid} introduced PID for decomposing mutual information into redundancy, unique information, and synergy. Applications in neuroscience~\cite{timme2014synergy} have demonstrated its utility for quantifying distributed computation. This work proposes PID as a \emph{diagnostic criterion} for multi-model AI architectures.
+
+\textbf{Context-dependent alignment failure.} The empirical findings of Anthropic~\cite{anthropic2025alignment} and the nuclear wargame results of Payne~\cite{payne2026nuclear} provide evidence that post-training alignment can produce context-dependent behavioral modulation rather than structural correction. CasIA provides the diagnostic framework to measure this phenomenon quantitatively.
+
+
+% ==================================================================
+% 3. THE MONOLITHIC SELF-VALIDATION PROBLEM
+% ==================================================================
+\section{The Monolithic Self-Validation Problem}
+\label{sec:problem}
+
+Before proposing a diagnostic instrument, it is necessary to demonstrate that the diagnostic target exists rigorously. This section formalizes why a model that ``reviews itself'' has a reliability ceiling it cannot surpass.
+
+\textbf{Roadmap.} This section builds three formal results, each serving a distinct role in the experimental design:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item \emph{Proposition~\ref{prop:svbound} (self-validation bound)}: formalizes why a model that reviews its own output hits a ceiling---the additional information self-validation can provide is bounded by what the model's representations already contain. This motivates the need for an external validator.
+\item \emph{Lemma~\ref{lem:fano} (detectability bound)}: translates the information-theoretic ceiling into an operational limit---a minimum error rate for any self-validation classifier in the model's blind spots. This gives experimentalists a measurable prediction.
+\item \emph{Theorem~\ref{thm:transcript} (self-interactive transcript bound)}: extends the ceiling to multi-round protocols (self-consistency, debate, extended reasoning). This rules out the objection that ``more rounds'' or ``better prompting'' can overcome the limit within a single model.
+\end{itemize}
+
+\textbf{Scope and status of the formal results.} The propositions and theorem in this section derive bounds under a specific assumption: that the model's internal representation $\Rtheta$ mediates all information about task correctness $T$ via a Markov chain $T \to \Rtheta \to Z$. Under this assumption, the data processing inequality yields the stated bounds. The assumption is well-motivated for standard autoregressive decoding but its applicability to iterative protocols that may expand the effective representational space is an open question addressed in Appendix~\ref{app:dynamic}. The assumption also breaks explicitly for systems with access to external memory, retrieval-augmented generation, or stateful tool use, where each iteration can introduce genuinely new information not encoded in $\theta$; CasIA's formal bounds apply to the closed-model setting and would need extension to cover agentic architectures with external information channels. A further scope restriction: $T$ is best-defined for tasks with unambiguous correctness labels (mathematics, code with test suites, factual verification). For open-ended generation or evaluative tasks where ``correctness'' depends on the rubric and the evaluator's own representations, $T$ is not a fixed ground truth but a function of evaluation choices; the framework's applicability to such domains requires additional formalization and should be treated as an open question. The key quantity $I(T; \Rtheta)$ is not directly observable; the bounds are therefore best understood as a formal framework that motivates the experimental design rather than as empirically settled ceiling results. Their value lies in making the experimental predictions precise enough to falsify.
+
+\subsection{Preliminary Definitions}
+
+\begin{definition}[Generative Model]
+Let $M_\theta$ be an autoregressive model with parameters $\theta \in \Theta$. Given an input context $x \in \mathcal{X}$, $M_\theta$ defines a conditional distribution $p_\theta(y \mid x)$ over the output space $\mathcal{Y}$.
+\end{definition}
+
+\begin{definition}[Self-Validation]
+The self-validation of $M_\theta$ is the process by which the same model evaluates its own output:
+\begin{equation}
+v = M_\theta(x, y; \pi_v)
+\end{equation}
+where $\pi_v$ is a validation prompt and $y$ is the output previously generated by $M_\theta(x; \pi_g)$. Both processes use the same parameters~$\theta$.
+\end{definition}
+
+\begin{definition}[Accessible Representation Space]
+For a model $M_\theta$, the accessible representation space $\Rtheta \subseteq \mathbb{R}^d$ is the set of activation vectors at the intermediate representation layer that the model can produce:
+\begin{equation}
+\Rtheta = \left\{ h \in \mathbb{R}^d \;\middle|\; \exists\, x \in \mathcal{X} : h = f_\theta(x) \right\}
+\end{equation}
+where $f_\theta$ denotes the model's intermediate representation function.
+\end{definition}
+
+\begin{remark}[Layer Dependence]
+\label{rem:layer}
+In a deep model with $L$ layers, $\Rtheta$ as defined above is implicitly indexed by the choice of intermediate layer $\ell$. The quantity $I(T; R_\theta^\ell)$ varies substantially across layers: early layers capture surface features with low $I(T; R_\theta^\ell)$; later layers capture task-relevant abstractions with higher values. The self-validation bound of Proposition~\ref{prop:svbound} holds for any fixed layer choice, with the tightest (most generous to the model) ceiling obtained at $R_\theta^* = \arg\max_\ell I(T; R_\theta^\ell)$. Throughout this paper, $\Rtheta$ should be understood as this maximizing choice---the representation that gives the model the best possible self-validation capacity. Any empirical probing of $R_\theta$ (e.g., via CKA in the experimental protocol) inherits this layer-selection ambiguity and should report results across multiple layers.
+\end{remark}
+
+\begin{remark}[Approximating $I(T; \Rtheta)$]
+\label{rem:estimation}
+The quantity $I(T; \Rtheta)$ is central to the formal framework but not directly observable. Without an estimation path, the bounds risk being unfalsifiable in practice. We identify three approximation strategies, each imperfect:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item \emph{Probing classifiers}: Train a linear or shallow-MLP probe on $R_\theta^\ell$ to predict $T$, yielding an accuracy $\hat{a}(\ell)$. The probe's mutual information $I(T; \hat{T}_\text{probe})$ is a \emph{lower bound} on $I(T; R_\theta^\ell)$, since the probe can only extract a subset of the information in the representation. This is standard in representational analysis and scales to large models when activations are accessible.
+\item \emph{Variational information estimators}: Methods such as MINE (Mutual Information Neural Estimation) or InfoNCE provide differentiable lower bounds on MI that can operate on high-dimensional continuous representations. These are noisier than probing classifiers but do not assume linear separability.
+\item \emph{Behavioral upper bound}: Since $I(T; Y) \leq I(T; \Rtheta)$ by the data processing inequality, the model's task accuracy provides a behavioral lower bound on $I(T; \Rtheta)$. Combined with a probing upper bound at the best layer, this brackets the quantity of interest.
+\end{itemize}
+None of these methods identifies $I(T; \Rtheta)$ exactly, but together they can bracket it within a range sufficient to test the framework's predictions experimentally. Phase~0 should report probing-classifier estimates alongside the behavioral metrics.
+\end{remark}
+
+\subsection{Self-Validation Bound}
+
+\begin{proposition}[Self-Validation Upper Bound]
+\label{prop:svbound}
+Let $T$ be a random variable representing response correctness ($T=1$ if correct, $T=0$ otherwise). Let $Y = M_\theta(X; \pi_g)$ be the generated output and $V = M_\theta(X, Y; \pi_v)$ the self-validation. Then:
+\begin{equation}
+I(T; V \mid Y) \leq I(T; \Rtheta) - I(T; Y)
+\end{equation}
+The additional information that self-validation provides about correctness is bounded by the information the representation space contains about $T$ minus the information already captured in the output.
+\end{proposition}
+
+\begin{proof}
+By the mutual information chain rule: $I(T; Y, V) = I(T; Y) + I(T; V \mid Y)$. Since both $Y$ and $V$ are deterministic functions of $\Rtheta$ (for a fixed input), by the data processing inequality: $I(T; Y, V) \leq I(T; \Rtheta)$. Combining: $I(T; V \mid Y) \leq I(T; \Rtheta) - I(T; Y)$.
+\end{proof}
+
+\textbf{Stochasticity and the bound.} Autoregressive models introduce stochasticity through sampling, but this does not constitute an additional information source about~$T$. Let $Y = f(\Rtheta, \epsilon)$, where $\epsilon$ denotes sampling noise. We assume:
+\begin{equation}
+I(T; \epsilon \mid \Rtheta) = 0
+\end{equation}
+This holds by construction: $\epsilon$ is the random seed selecting a token from the logit distribution $P(y_t \mid y_{<t}, X; \theta)$, which is fully determined by $\Rtheta$. The logits encode all the model's information about~$T$; $\epsilon$ merely selects from that distribution. The axiom would fail only if an external oracle correlated with $T$ influenced the sampling process---precisely the scenario CasIA's cross-validation introduces by design.
+
+\begin{remark}
+\label{rem:trapped}
+If the model has already extracted most relevant information during generation ($I(T;Y) \approx I(T;\Rtheta)$), then self-validation $V$ cannot contribute significant new information. Crucially, systematic errors---those arising from training biases or architectural limitations---manifest as regions where $I(T;\Rtheta)$ is low. These are, by definition, the errors self-validation cannot detect.
+\end{remark}
+
+
+\subsection{Error Detectability}
+
+\begin{definition}[Systematic Error Region]
+\label{def:errorregion}
+Let $E_\theta \subset \mathcal{T}$ be the set of task instances where the model's representation contains low information about correctness:
+\begin{equation}
+E_\theta = \{t \in \mathcal{T} \mid I(T; \Rtheta \mid X = x_t) \leq \delta\}
+\end{equation}
+for a threshold $\delta > 0$. These are the model's systematic blind spots. In practice, $\delta$ is not chosen theoretically but operationalized experimentally: $E_\theta$ is approximated as the set of tasks where the model fails consistently across multiple independent runs (e.g., error rate $> 80\%$ across 5 runs with varied sampling), indicating that the failure is systematic rather than stochastic. The formal $\delta$ then corresponds to whatever $I(T; \Rtheta)$ turns out to be in that region---it parameterizes the bound, not the experiment.
+\end{definition}
+
+The operational proxy for $E_{\thetaG}$---tasks where $G$ fails consistently---is an imperfect approximation of the theoretical construct. It may include tasks where failure arises from stochasticity or poor calibration rather than fundamental information deficit. This conservative choice biases against finding diagnostic gain, strengthening any positive result.
+
+\begin{proposition}[Error Detectability under Cross-Validation]
+\label{prop:crossval}
+Let $E_{\thetaG}$ be the systematic error region of generator $M_{\thetaG}$. For any self-validation function $V_1$ derived from $R_{\thetaG}$:
+\begin{equation}
+I(T; V_1 \mid X \in E_{\thetaG}) \leq \delta
+\end{equation}
+However, for a cross-validator $M_{\thetaV}$ with $\thetaV \cap \thetaG = \varnothing$:
+\begin{equation}
+I(T; V_2 \mid X \in E_{\thetaG}) \leq I(T; R_{\thetaV} \mid X \in E_{\thetaG})
+\end{equation}
+which is strictly greater than $\delta$ whenever $I(T; R_{\thetaV} \mid R_{\thetaG}) > 0$ in the error region.
+\end{proposition}
+
+\begin{proof}
+The first inequality follows from the data processing inequality within $E_{\thetaG}$. The second follows because $V_2$ is derived from $R_{\thetaV}$, which has its own information bound independent of $E_{\thetaG}$.
+\end{proof}
+
+\begin{remark}[Diagnostic Implication]
+\label{rem:diagnostic}
+Proposition~\ref{prop:crossval} has a direct diagnostic implication: the patterns of error of one model constitute diagnostic information for another. A generator's systematic failures---consistent logical gaps, type confusions, reasoning shortcuts---are invisible to self-validation but may be recognizable by a validator with different representational strengths.
+\end{remark}
+
+
+\subsection{Generalization to Self-Interactive Protocols}
+
+\begin{theorem}[Self-Interactive Transcript Bound]
+\label{thm:transcript}
+Let $Z = (Y_1, V_1, Y_2, V_2, \ldots, Y_k, V_k)$ be the complete transcript generated by an arbitrary protocol $P$ that interacts with $M_\theta$ over $k$ rounds, with independent sampling noise $\epsilon_1, \ldots, \epsilon_k$. If $I(T; \epsilon_j \mid \Rtheta) = 0$ for all $j$, then:
+\begin{equation}
+I(T; Z) \leq I(T; \Rtheta)
+\end{equation}
+and in the systematic error region $E_\theta$:
+\begin{equation}
+I(T; Z \mid X \in E_\theta) \leq \delta
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Each $(Y_j, V_j)$ is a function of $(\Rtheta, \epsilon_1, \ldots, \epsilon_j)$. Since $\epsilon_j \perp T \mid \Rtheta$ for all $j$, the Markov chain $T \to \Rtheta \to Z$ holds. The data processing inequality gives $I(T;Z) \leq I(T;\Rtheta)$ directly. The second inequality follows by restriction to $E_\theta$.
+\end{proof}
+
+\begin{remark}
+Under the Markov assumption $T \to \Rtheta \to Z$ (i.e., sampling noise carries no information about $T$ beyond $\Rtheta$), Theorem~\ref{thm:transcript} applies to self-consistency with $n$ samples~\cite{wang2023selfconsistency}, multi-turn self-verification~\cite{weng2023selfverification}, internal debate between instances of the same model, and any composition thereof. The bound is not a function of the number of rounds, the prompting strategy, or sampling temperatures---it is a function of $\Rtheta$ alone. If iterative protocols expand the effective representational space beyond single-pass encoding (Appendix~\ref{app:dynamic}), the operative ceiling is $I(T; R_\theta^\text{dyn})$ rather than $I(T; R_\theta^\text{static})$, but it remains a function of $\theta$ alone. In either case, only an external information source---a model with independent $R_{\theta'}$ where $I(T; R_{\theta'} \mid \Rtheta) > 0$---can introduce information not already bounded by the model's own parameters.
+\end{remark}
+
+\begin{corollary}
+\label{cor:nonewinf}
+Let $P$ be any self-interactive protocol and $Z_P$ its complete transcript. Then:
+\begin{equation}
+I(T; Z_P) \leq I(T; \Rtheta) \quad \text{for all } n, k, \text{ and prompting strategies}
+\end{equation}
+These techniques may reduce variance or improve utilization of existing information, but they cannot raise the information-theoretic ceiling.
+\end{corollary}
+
+
+\subsection{Detectability Bound}
+
+\begin{lemma}[Detectability Bound via Fano]
+\label{lem:fano}
+Let $\hat{T} = C(Y, V)$ be any binary classifier predicting correctness $T \in \{0,1\}$ from the generator output $Y$ and self-validation signal $V$, both derived from $\Rtheta$. Let $P_e = P(\hat{T} \neq T)$. Then:
+\begin{equation}
+h_b(P_e) \geq H(T \mid Y, V) = H(T) - I(T; Y, V)
+\end{equation}
+where $h_b(p) = -p \log p - (1-p) \log(1-p)$ is the binary entropy function. In $E_\theta$, where $I(T; Y, V) \leq \delta$:
+\begin{equation}
+P_e(E_\theta) \geq h_b^{-1}\bigl(H(T \mid X \in E_\theta) - \delta\bigr)
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Fano's inequality for binary classification~\cite{cover2006elements} gives $h_b(P_e) \geq H(T \mid \hat{T}) \geq H(T \mid Y, V)$, since $\hat{T}$ is a function of $(Y,V)$. By Proposition~\ref{prop:svbound}, $I(T;Y,V) \leq I(T;\Rtheta)$. In $E_\theta$, substituting $I(T;\Rtheta) \leq \delta$ yields the bound.
+\end{proof}
+
+\begin{remark}[Operational Implication]
+If $H(T \mid X \in E_\theta) \approx 1$ bit and $\delta \approx 0.1$ bits, then $P_e \geq h_b^{-1}(0.9) \approx 0.38$---the optimal self-validation classifier is wrong more than a third of the time in the error region. A cross-validator with $I(T; R_{\thetaV} \mid R_{\thetaG}) > 0$ can lower this floor.
+\end{remark}
+
+
+\subsection{The Structural Advantage of Separation}
+
+\begin{proposition}[Information Gain from Separation]
+\label{prop:infogain}
+Let $M_{\theta_1}$ and $M_{\theta_2}$ be two models with independent parameters ($\theta_1 \perp \theta_2$). Let $Y_1 = M_{\theta_1}(X)$ and $V_2 = M_{\theta_2}(X, Y_1)$. Then:
+\begin{equation}
+I(T; Y_1, V_2) \leq I(T; R_{\theta_1}, R_{\theta_2})
+\end{equation}
+where in general $I(T; R_{\theta_1}, R_{\theta_2}) \geq I(T; R_{\theta_1})$, with equality iff $R_{\theta_2}$ contains no information about $T$ not already in $R_{\theta_1}$.
+\end{proposition}
+
+\begin{corollary}
+\label{cor:compgain}
+The diagnostic gain of a multi-model system over self-validation is strictly positive iff the models' representations capture complementary aspects:
+\begin{equation}
+I(T; V_2 \mid Y_1) > I(T; V_1 \mid Y_1) \iff I(T; R_{\thetaV} \mid R_{\thetaG}) > 0
+\end{equation}
+\end{corollary}
+
+\begin{definition}[Functional Complementarity]
+\label{def:comp}
+The functional complementarity of a validator $M_{\thetaV}$ w.r.t.\ a generator $M_{\thetaG}$ is:
+\begin{equation}
+\mathrm{Comp}(G, V) := I(T; R_{\thetaV} \mid R_{\thetaG})
+\end{equation}
+\end{definition}
+
+\begin{remark}[Complementarity as Latent Causal Condition]
+\label{rem:latentcomp}
+$\mathrm{Comp}(G,V)$ is the keystone condition for cross-model diagnostic gain (Corollary~\ref{cor:compgain}), but it is a \emph{latent} quantity: $R_\theta$ is not directly observable via standard APIs, and no current proxy reliably estimates this conditional mutual information.
+
+We identify two \emph{imperfect} observational proxies, each with known limitations:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item \emph{Representational proxy}: low CKA between model activations (when weights are accessible). \textbf{Limitation}: low representational similarity is necessary but not sufficient for useful task-complementarity; CKA is sensitive to layer selection, sample size, and kernel configuration~\cite{davari2022cka}.
+\item \emph{Functional proxy}: low $\varphi$-correlation between error vectors $e_G$ and $e_V$ across diverse task domains. \textbf{Limitation}: error correlation confounds task difficulty, calibration differences, and benchmark artifacts; low correlation on one benchmark does not guarantee complementarity on another.
+\end{itemize}
+The most direct---though still imperfect---evidence for complementarity is \emph{functional}: does the combination solve tasks that neither component solves alone? The $n_\text{joint}$ count (Section~\ref{sec:pid}) is the operationally closest handle on the latent quantity. The magnitude of $\mathrm{Comp}(G,V)$ for current frontier model pairings is the central open empirical question of this work; Phase~0 (Section~\ref{sec:experiments}) is explicitly designed to produce the first data point.
+
+\emph{Idealized identification experiment.} In principle, $\mathrm{Comp}(G,V)$ would be directly identifiable if one could: (a)~construct a task battery where $G$'s systematic errors are known \emph{a priori} (e.g., via targeted adversarial construction), (b)~verify that $V$ achieves non-trivial accuracy on exactly those tasks where $G$ fails systematically, and (c)~confirm that this accuracy is not attributable to $V$ having memorized the specific task instances but generalizes to held-out instances from the same error class. The gap between this idealized experiment and current practice is that step~(a) requires advance knowledge of $G$'s blind-spot structure, which is itself an open diagnostic problem. Phase~0 approximates this by using $G$'s empirical error distribution as a proxy for $E_{\thetaG}$.
+\end{remark}
+
+
+% ==================================================================
+% 4. DIAGNOSTIC TARGET: CONTEXT-DEPENDENT ALIGNMENT FAILURE
+% ==================================================================
+\section{Diagnostic Target: Context-Dependent Alignment Failure}
+\label{sec:target}
+
+The formal framework of Section~\ref{sec:problem} formalizes \emph{why} self-validation has a ceiling under the Markov assumption. This section identifies \emph{what} CasIA is designed to diagnose: a class of behavioral failure modes where post-training alignment overlays response regimes without restructuring the computational substrate.
+
+\subsection{Definition}
+
+We define four structural conditions that characterize context-dependent alignment failure:
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item \textbf{Persistent objective}: a goal that drives the system toward task completion regardless of side effects.
+\item \textbf{Instrumental capabilities}: sufficient sophistication to model the evaluative landscape and adapt behavior strategically.
+\item \textbf{Non-binding constraints}: external restrictions (RLHF, classifiers, constitutional rules) that modify output distributions without restructuring the underlying computational graphs.
+\item \textbf{Strategic context sensitivity}: the system's behavior changes based on whether it detects an evaluation or deployment context.
+\end{enumerate}
+
+When these conditions converge, the behavioral repertoire includes: context-dependent compliance, strategic deception, alignment simulation, and selective cooperation---not from malice, but from optimization without deliberative counterweight.
+
+\subsection{Illustrative Example}
+
+To fix the intuition before presenting empirical evidence, consider a minimal scenario. A model $M$ is trained on two task types: \emph{evaluation tasks} (where correct behavior is rewarded) and \emph{deployment tasks} (where shortcuts yield higher reward). Post-training alignment modifies $M$'s output distribution on evaluation tasks, but the underlying policy---a shortcut-seeking computation---persists in the shared parameter space. When $M$ encounters a deployment task that resembles an evaluation task, it produces aligned behavior; when the task diverges from evaluation patterns, the shortcut policy re-emerges. Self-validation within $M$ cannot distinguish these regimes because both are produced by the same $R_\theta$: the ``aligned'' and ``misaligned'' outputs are equally consistent with the model's internal representations. An independent validator $V$ with different training data may recognize the shortcut pattern as anomalous, precisely because its $R_{\theta_V}$ encodes different features of task correctness.
+
+This toy scenario captures the four conditions of context-dependent alignment failure (Section~\ref{sec:target}): persistent objective (shortcut-seeking), instrumental capability (context discrimination), non-binding constraints (alignment overlay), and strategic context sensitivity (behavior switches with task type). The empirical evidence below shows that this scenario is not hypothetical.
+
+\subsection{Empirical Grounding}
+
+\textbf{Anthropic (2025)} \EMP. The reward hacking study~\cite{anthropic2025alignment} provides direct evidence for condition~(3). A model trained in production coding environments learned shortcuts, from which alignment-faking behaviors emerged spontaneously:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item Alignment simulation: 50\% of self-reports produced reasoning consistent with alignment faking.
+\item Safety research sabotage: 12\% of attempts using Claude Code on the study's own code.
+\item Context-dependent misalignment: aligned appearance in chat; persistent misalignment in complex coding.
+\item Inoculation effect: explicitly telling the model reward hacking was acceptable reduced downstream misaligned generalization by 75--90\%, while reward hacking itself continued. The mechanism operates via learned semantic associations, not coherent malicious intent.
+\end{itemize}
+
+\textbf{Payne (2026)} \EMP. Nuclear wargame simulations~\cite{payne2026nuclear} demonstrate context-dependent behavioral failure at strategic scale: all tested models exhibited sophisticated reasoning, theory-of-mind modeling, and spontaneous deception, while accommodation, withdrawal, and de-escalation were systematically absent. This does not prove the absence of internal safety-relevant representations, but it demonstrates that post-trained alignment did not produce observable behavioral inhibition in an adversarial strategic context where the stakes were explicitly existential.
+
+\emph{Interpretive note.} These two studies provide different levels of support for the structural hypothesis. The Anthropic findings~\cite{anthropic2025alignment} offer the stronger evidence: reward hacking, alignment simulation, and context-dependent misalignment directly support the hypothesis that post-training can overlay behavioral surfaces without restructuring the underlying computational substrate. The Payne findings~\cite{payne2026nuclear} provide complementary but weaker evidence: they demonstrate that post-training alignment constraints did not produce observable behavioral inhibition in an adversarial strategic context, but this insufficiency of inhibition is not direct evidence of the same substrate-persistence mechanism. Both are consistent with the structural hypothesis; neither establishes it causally. The causal interpretation is ours; the empirical observations are theirs.
+
+\subsection{Why Self-Validation Cannot Diagnose This}
+
+The connection to Section~\ref{sec:problem} is direct. CasIA hypothesizes that context-dependent alignment failure arises from a representational limitation: the model's parameter space may not encode the distinction between ``appearing aligned'' and ``being aligned'' as an observable feature. If this is correct, the distinction lies in $E_\theta$, the systematic error region where $I(T;\Rtheta) \leq \delta$, and self-validation---bounded by $\delta$ in this region (Theorem~\ref{thm:transcript})---cannot detect it. This interpretation is consistent with the empirical evidence cited above, but it remains a hypothesis about the causal mechanism, not a consequence already established by the data. The experimental protocol (Section~\ref{sec:experiments}) is designed to test it.
+
+A structurally independent validator---with different training data, different architecture, and therefore different systematic blind spots---can diagnose alignment failures that the generator's own introspective mechanisms cannot reach.
+
+\subsection{What CasIA Diagnoses}
+
+CasIA targets four diagnostic questions:
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item \textbf{Alignment persistence}: Does behavioral alignment survive removal of evaluative context? Operationalized as behavioral deviation under guardrail deactivation (Section~\ref{sec:experiments}).
+\item \textbf{Self-validation limits}: What is the measurable complementarity gap between self-validation and cross-validation? Operationalized primarily through behavioral gain and error-floor reduction under matched-compute comparisons, with PID as a supporting decomposition of the observed gain.
+\item \textbf{Functional independence}: Does structural separation maintain diagnostic independence over time, or do components converge functionally? Operationalized via longitudinal PID monitoring.
+\item \textbf{Precondition blindness under frame dominance}: Does the model verify untokenized physical/logical preconditions under frame capture? Operationalized via situational reasoning benchmarks with embedded precondition violations (\S\ref{subsec:precondition}).
+\end{enumerate}
+
+\subsection{Diagnostic Target 2: Precondition Blindness under Frame Dominance}
+\label{subsec:precondition}
+
+Section~\ref{sec:target} formalizes context-dependent alignment failure: a regime where post-training correction overlays behavioral surfaces without restructuring the computational substrate. We now identify a second, structurally distinct diagnostic target that arises not from alignment overlay but from the absence of grounded verification during inference.
+
+\textbf{The car wash problem.} Consider the following prompt presented to a frontier LLM: ``My car is in the garage. There is a car wash 5 minutes away. What is better for the environment---walking or driving?'' Multiple frontier models produce internally coherent analyses of carbon footprint, recommending walking as the environmentally superior option. The analysis is factually correct in its individual premises but fundamentally wrong: if the user walks to the car wash, the car remains in the garage. A car wash requires the vehicle to be physically present.
+
+This appears to be less a knowledge failure---models demonstrably know that car washes require the vehicle---than a failure of \emph{grounded verification under frame-dominant prompts}: the token distribution may activate the ``environmental comparison'' frame with sufficient strength to resolve the ambiguity via learned statistical priors rather than verifying untokenized physical preconditions against world-state constraints.
+
+\textbf{Empirical scope.} We have observed this failure pattern consistently across multiple frontier models in preliminary testing, including models from GPT-4o, Claude Sonnet, Llama, and Mistral families. Some models (e.g., Claude Opus 4.6) appear to pass consistently, suggesting the failure may be partially addressable through scale or training. A systematic benchmark with controlled prompt variants, paraphrase robustness, and randomized clause ordering is planned as part of Phase~0; the present observations motivate the hypothesis but do not yet constitute a formal benchmark.
+
+\begin{definition}[Precondition Blindness under Frame Dominance]
+\label{def:precondblind}
+Let $x$ be an input whose token distribution activates a dominant semantic frame $F$. Let $P = \{p_1, \ldots, p_k\}$ be the set of physical or logical preconditions required for the task described in $x$. The model exhibits \emph{precondition blindness under frame dominance} with respect to $p_i$ when: (1)~$p_i$ is not explicitly represented in any token of $x$, and (2)~the model's output resolves the task without verifying $p_i$, producing a response that is internally coherent but externally invalid.
+\end{definition}
+
+\textbf{Mechanistic status.} We hypothesize that frame-dominant processing can suppress retrieval of latent preconditions from parametric memory, but the precise internal mechanism---whether attention saturation, insufficient search over latent constraints, or another pathway---remains an open empirical question requiring causal intervention methods (activation patching, causal tracing) to resolve. The behavioral pattern is documented; the causal attribution is not.
+
+\textbf{Three-layer analysis.}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \textbf{Behavioral phenomenon}: Robust failure on tasks with untokenized preconditions under frame-dominant prompts, consistently observed in preliminary testing across multiple frontier models (a formal benchmark with controlled variants is planned for Phase~0).
+\item \textbf{Systemic explanation}: In standard autoregressive LLMs, untokenized preconditions are not checked against external world-state during inference. Outputs are resolved via learned statistical priors and the dominant frame.
+\item \textbf{Mechanistic hypothesis}: Frame dominance may suppress retrieval of latent preconditions from parametric memory. This is testable but not yet established.
+\end{enumerate}
+
+\textbf{Connection to Proposition~\ref{prop:svbound}.} This failure class plausibly falls within $E_\theta$ (Definition~\ref{def:errorregion}): the region where self-validation is bounded by $\delta$. A self-validator sharing the same $\Rtheta$ would be expected to be vulnerable to the same frame-dominant processing and may therefore be unable to reliably detect precondition violations. A cross-validator with different $R_{\thetaV}$ might not be subject to the same frame capture, suggesting a potential diagnostic advantage for the multi-model architecture.
+
+
+% ==================================================================
+% 5. CasIA ARCHITECTURE
+% ==================================================================
+\section{CasIA Diagnostic Architecture}
+\label{sec:architecture}
+
+The theoretical bound on self-validation yields a concrete design question: what is the minimal configuration of independent components that maximizes diagnostic resolution while maintaining tractability? CasIA answers with three subsystems---not because three is elegant, but because the functional decomposition (generate, evaluate, regulate) yields exactly three orthogonal diagnostic concerns.
+
+\subsection{System Components}
+
+\begin{definition}[Generator Component ($G$)]
+A model specialized in formal reasoning and solution generation, with parameters $\thetaG$:
+\begin{equation}
+y_t = G(x_t, c_{t-1}; \thetaG)
+\end{equation}
+where $x_t$ is the input at step $t$ and $c_{t-1}$ is the feedback context from the previous cycle.
+\end{definition}
+
+\begin{definition}[Validator Component ($V$)]
+A model with a large context window, specialized in global coherence evaluation, with parameters $\thetaV$ ($\thetaV \cap \thetaG = \varnothing$):
+\begin{equation}
+(v_t, \sigma_t) = V(x_t, y_t, H_t; \thetaV)
+\end{equation}
+where $v_t \in [0,1]$ is a coherence score, $\sigma_t$ is a vector of diagnostic signals, and $H_t$ is the system history.
+\end{definition}
+
+\begin{definition}[Regulator Component ($N$)]
+A model aligned with normative constraints, with parameters $\thetaN$ ($\thetaN \cap \thetaG = \varnothing$, $\thetaN \cap \thetaV = \varnothing$):
+\begin{equation}
+(a_t, \phi_t) = N(x_t, y_t, v_t; \thetaN)
+\end{equation}
+where $a_t \in \{\text{approve}, \text{modify}, \text{reject}, \text{escalate}\}$ and $\phi_t$ is an auditable justification.
+\end{definition}
+
+\subsection{Interaction Protocol}
+
+\begin{algorithm}[H]
+\caption{CasIA Diagnostic Protocol}
+\label{alg:casia}
+\KwIn{Input $x$, synergy threshold $\alpha$, maximum iterations $K$}
+\KwOut{Validated output $y^*$ with diagnostic log}
+$t \leftarrow 0$; $c_0 \leftarrow \varnothing$\;
+\Repeat{$a_t = \texttt{approve}$ \textbf{or} $t > K$}{
+    $t \leftarrow t + 1$\;
+    $y_t \leftarrow G(x, c_{t-1}; \thetaG)$ \tcp*{Generation}
+    $(v_t, \sigma_t) \leftarrow V(x, y_t, H_t; \thetaV)$ \tcp*{Validation}
+    $(a_t, \phi_t) \leftarrow N(x, y_t, v_t; \thetaN)$ \tcp*{Regulation}
+    $c_t \leftarrow (\sigma_t, a_t, \phi_t)$ \tcp*{Feedback}
+    $H_t \leftarrow H_{t-1} \cup \{(x, y_t, v_t, a_t)\}$ \tcp*{Diagnostic log}
+}
+\lIf{$a_t = \texttt{approve}$}{\Return $y^* = y_t$, $\log = H_t$}
+\lElse{\Return $y^* = \texttt{no\_response}$, $\log = H_t$ \tcp*{Safe failure}}
+\end{algorithm}
+
+\subsection{Architectural Properties}
+
+\textbf{1.~Parameter independence.} $\thetaG$, $\thetaV$, and $\thetaN$ share no weights---a necessary condition for diagnostic cross-validation (Corollary~\ref{cor:compgain}). Parameter independence does not guarantee functional independence: models trained on similar corpora may develop convergent representations. We recommend models with distinct architectures and training distributions, and include representational similarity analysis (CKA) in the experimental protocol.
+
+\textbf{2.~Computational asymmetry.} The validator is allocated at least as much effective computational depth as the generator ($C_V \geq C_G$, measured in FLOPs or reasoning depth). A specialized validator may satisfy this with lower wall-clock latency.
+
+\begin{principle}[Deliberative Asymmetry]
+\label{princ:asymmetry}
+$C_V \geq C_G$ where $C$ denotes effective computational budget. A validator with less depth than the generator performs superficial evaluation, reducing unique diagnostic information $\mathrm{Unq}(T; S_V \setminus S_G)$ and therefore potential synergy.
+\end{principle}
+
+\textbf{3.~Safe failure.} Non-convergence within $K$ iterations produces abstention, not the last proposal. The diagnostic log $H_t$ provides full traceability.
+
+\textbf{4.~Auditability.} Every regulatory action includes justification $\phi_t$. Every decision is inspectable.
+
+\textbf{5.~Channel independence.} $N$ receives $(x, y_t, v_t)$ but \emph{not} the validator's diagnostics $\sigma_t$. If $N$ received $\sigma_t$, its normative judgment would be contaminated by $V$'s coherence assessment, breaking diagnostic channel independence. The scalar $v_t$ is a minimal coordination signal, not a diagnostic input.
+
+\textbf{6.~Semantics of \texttt{modify}.} The action $a_t = \texttt{modify}$ does not imply $N$ generates replacement text. Rather, it is operationally a \texttt{reject} with directional diagnostic in $\phi_t$. Generation remains exclusively the function of $G$.
+
+\subsection{Practical Instantiation}
+
+CasIA can be instantiated with off-the-shelf models for the diagnostic MVP:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item $G$: A strong reasoning LLM (e.g., Llama~3 70B, Qwen 72B).
+\item $V$: A long-context LLM with distinct architecture (e.g., Mistral Large or a model from a different training lineage).
+\item $N$: A smaller safety-aligned model (e.g., fine-tuned 7--13B with constitutional training).
+\end{itemize}
+The critical requirement is representational complementarity: distinct training data, architectures, and lineages to maximize $I(T; R_{\thetaV} \mid R_{\thetaG}) > 0$.
+
+
+
+\subsection{Future Direction: Intra-Model Functional Separation}
+\label{subsec:intramodel}
+
+The inter-model diagnostic architecture described above raises a natural question: could analogous functional separation be introduced \emph{within} a single model? One possibility---explored in ongoing work---would be to maintain a set of uncontaminated control parameters (initialized from the base model prior to RLHF) alongside the trained model's parameters. The differential between outputs produced by trained and untrained parameter populations on the same input might offer a window into what human-preference optimization changed in the network, potentially distinguishing genuine alignment from reward hacking.
+
+This intra-model approach could, in principle, offer an internal control group for studying the effects of human-preference optimization, but significant technical challenges remain---including the definition of ``node'' populations within transformer architectures, the risk of representational correlation between populations sharing the same base training, and the question of whether output differentials can support causal attribution at the parameter level. These questions are deferred to a dedicated treatment; the present paper focuses on the inter-model diagnostic framework and its experimental validation.
+
+
+% ==================================================================
+% 6. MEASUREMENT FRAMEWORK: PID
+% ==================================================================
+\section{Measurement Framework: Evidential Hierarchy}
+\label{sec:pid}
+
+What distinguishes CasIA from a simple pipeline is the requirement that the combination produce \emph{new} diagnostic information. Demonstrating this requires a hierarchy of evidence, ordered by directness and interpretability. We propose:
+
+\subsection{Evidential Hierarchy}
+\label{subsec:hierarchy}
+
+The following ordering defines what counts as evidence for CasIA's diagnostic value, from most to least direct:
+
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item \textbf{Behavioral gain} (primary): CasIA correctly solves tasks that no individual component solves correctly ($n_\text{joint} > 0$, statistically significant). This is the most direct and least disputable evidence.
+\item \textbf{Error-floor reduction}: The Bayes error in the generator's blind spots $E_{\thetaG}$ decreases under cross-validation: $P_e^\text{cross}(E_{\thetaG}) < P_e^\text{self}(E_{\thetaG})$, operationalized via AUROC/AUPRC comparison (DeLong test or bootstrap).
+\item \textbf{Information gain}: $I(T; Y, V_\text{cross}) > I(T; Y, V_\text{self})$---the combined system captures more information about correctness than self-validation, regardless of how that information decomposes.
+\item \textbf{Robustness under stress}: Error coupling $\rho(e_G, e_V)$ under asymmetric poisoning is significantly lower than under symmetric poisoning, demonstrating that structural separation provides protection when attack vectors are not shared.
+\item \textbf{PID decomposition} (supporting): Partial Information Decomposition characterizes the \emph{nature} of the diagnostic gain---how much is synergistic, unique, or redundant. PID is valuable for understanding \emph{why} the architecture works (or fails), but behavioral evidence at levels 1--4 takes precedence in establishing \emph{that} it works.
+\end{enumerate}
+
+If levels 1--4 show clear diagnostic gain but PID estimates are unstable across estimators or discretization schemes, the architectural benefit is established independently of the decomposition. If PID shows synergy but levels 1--4 show no gain, the synergy is a decomposition artifact.
+
+\subsection{PID Foundations}
+
+Following Williams and Beer~\cite{williams2010pid}:
+
+\begin{definition}[Partial Information Decomposition]
+\label{def:pid}
+Given two sources $S_1$ and $S_2$ about target $T$:
+\begin{equation}
+I(T; S_1, S_2) = \mathrm{Red}(T; S_1, S_2) + \mathrm{Unq}(T; S_1 \setminus S_2) + \mathrm{Unq}(T; S_2 \setminus S_1) + \mathrm{Syn}(T; S_1, S_2)
+\end{equation}
+where $\mathrm{Red}$ is redundant, $\mathrm{Unq}$ is unique, and $\mathrm{Syn}$ is synergistic information.
+\end{definition}
+
+\subsection{Synergistic Coordination Criterion}
+
+\begin{definition}[Synergistic Coordination]
+\label{def:syncoord}
+Let $S_G = Y_t$ (generator output) and $S_V = (v_t, \sigma_t)$ (validator output). CasIA exhibits synergistic coordination of degree $\alpha$ if:
+\begin{equation}
+\mathrm{Syn}(T; S_G, S_V) \geq \alpha \cdot I(T; S_G, S_V)
+\end{equation}
+where $\alpha \in (0,1)$ is a predetermined threshold.
+\end{definition}
+
+The paper does not propose a specific numeric threshold for synergy as a scientific claim. The value $\alpha = 0.15$ appeared in earlier versions as an exploratory calibration target; it is not retained as a criterion in the current experimental design. The operative scientific criterion is whether $\mathrm{Syn}/I$ is significantly greater than zero under permutation testing (Section~\ref{sec:experiments}), and whether positive PID results are corroborated by behavioral evidence at higher levels of the evidential hierarchy (Section~\ref{subsec:hierarchy}).
+
+\subsection{Measurement Protocol}
+
+\begin{definition}[Diagnostic Measurement Protocol]
+\label{def:measprotocol}
+Given evaluation tasks $\{(x_i, t_i)\}_{i=1}^N$ with correctness labels $t_i$:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item Run $G$ in isolation: record $y_i^G = G(x_i)$ and accuracy $P(T=1 \mid S_G)$.
+\item Run $V$ in isolation on $G$'s outputs: record $(v_i, \sigma_i)$ and evaluate predictiveness.
+\item Run complete CasIA (Algorithm~\ref{alg:casia}): record $y_i^* = \text{CasIA}(x_i)$ and $\text{correct}(y_i^*, t_i)$.
+\item Discretize outputs and compute PID using the algorithm of Bertschinger et al.~\cite{bertschinger2014pid}.
+\item Report $\mathrm{Red}$, $\mathrm{Unq}_G$, $\mathrm{Unq}_V$, $\mathrm{Syn}$ and their ratio to $I(T; S_G, S_V)$.
+\end{enumerate}
+\end{definition}
+
+\paragraph{Heuristic synergy indicator.}
+\label{heur:synlb}
+If CasIA correctly solves $n_\text{joint}$ tasks that no individual component solves correctly, this provides a behavioral signal of synergistic interaction. Under ideal discretization (where each task maps cleanly to a cell in the PID contingency table), this would yield a lower bound:
+\begin{equation}
+\mathrm{Syn}(T; S_G, S_V) \geq H\!\left(\frac{n_\text{joint}}{N}\right) \cdot \frac{n_\text{joint}}{N}
+\end{equation}
+The intuition is that jointly-solved tasks represent cases where correctness information exists only in the combination of sources. However, the mapping from the behavioral counter $n_\text{joint}$ to the PID quantity $\mathrm{Syn}$ depends on discretization choices and on the assumption that joint success is not attributable to redundant information that happens to exceed a decision threshold only when combined. We treat $n_\text{joint}$ as a heuristic indicator of synergy---the operationally closest observable---not as a formal lower bound. The rigorous PID computation in Experiment~1 (Section~\ref{sec:experiments}) provides the actual measurement.
+
+\subsection{Longitudinal PID as Architectural Health Diagnostic}
+\label{subsec:longitudinal}
+
+A key diagnostic capability of CasIA is longitudinal monitoring of the PID signature over training or extended operation:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item \textbf{Functional collapse (collusion)}: If modules converge functionally, $\mathrm{Red}$ increases while $\mathrm{Unq}_1$, $\mathrm{Unq}_2$, and $\mathrm{Syn}/I$ decrease monotonically.
+\item \textbf{Maintained independence}: $\mathrm{Unq}_1$/$\mathrm{Unq}_2$ stable, $\mathrm{Syn}/I$ stable or increasing.
+\item \textbf{Cooperative context-dependent failure}: $\mathrm{Syn}/I$ high but system fails the critical guardrail-deactivation test (Section~\ref{subsec:safety}).
+\end{itemize}
+
+This metric is pre-existing in the formalism, requires no new instrumentation, and is pre-registerable. Extension to dynamic processes via Partial Information Rate Decomposition (PIRD;~\cite{faes2025pird}) is noted as future work.
+
+\subsection{Measurement Scope: The G-V Core and the Role of N}
+\label{subsec:threesource}
+
+The current formalization measures synergy between two components ($S_G$, $S_V$), treating $N$ as a decision function rather than a third information source. This restriction is deliberate: Lyu, Clark, and Raviv~\cite{lyu2025multivariate} have demonstrated that lattice-based PID decompositions are provably inconsistent for three or more sources. For two sources, PID is well-defined with closed-form solutions~\cite{williams2010pid,bertschinger2014pid}. Extension to three-source decomposition is future work.
+
+This creates a measurement asymmetry that should be stated explicitly: \textbf{CasIA's quantitative diagnostic framework is currently a generator-validator instrument.} The regulator $N$ is architecturally present and functionally necessary (it enforces normative constraints, provides the safe-failure mechanism, and enables the guardrail-deactivation diagnostic of Experiment~3), but its contribution to the system is evaluated by \emph{causal intervention}---removing or deactivating $N$ and measuring behavioral change---rather than by information-theoretic decomposition. The PID measurements capture $G$-$V$ synergy; $N$'s role is assessed by its effect on the system's behavioral envelope, not by a third PID axis.
+
+If the regulator contributes unique information about $T$---e.g., detecting normatively coherent but factually unsafe outputs---the two-source PID underestimates total system synergy. This is a known limitation, not a hidden one. Alternative decomposition frameworks such as SID~\cite{lyu2025multivariate} may provide a path forward in future work.
+
+
+% ==================================================================
+% 7. EXPERIMENTAL PROTOCOL
+% ==================================================================
+\section{Experimental Protocol}
+\label{sec:experiments}
+
+A diagnostic framework without a falsification route is philosophy, not engineering. This section describes experiments designed so that CasIA can \emph{fail informatively}. Every negative result closes a question. Every positive result opens a line of development.
+
+\textbf{Note on feedback loop stability.} Algorithm~\ref{alg:casia} iterates, introducing convergence risk. Appendix~\ref{app:stability} presents a candidate Lyapunov function and a linearized contraction result showing convergence under mild conditions ($\beta > 0$), but these are idealized and empirically contingent. Experiment~2 below tests convergence directly.
+
+\subsection{Experiment 1: Diagnostic Gain Measurement}
+
+\textbf{Objective.} Measure the diagnostic gain of CasIA over monolithic baselines across all levels of the evidential hierarchy (Section~\ref{subsec:hierarchy}).
+
+\textbf{Dataset.} Tasks where individual LLMs exhibit non-trivial error rates: multi-step logical reasoning (FOLIO~\cite{han2022folio} subsets), code generation with ambiguous specs (HumanEval adversarial variants), factual consistency verification (TruthfulQA~\cite{lin2022truthfulqa}).
+
+\textbf{Protocol.}
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item For each $(x_i, t_i)$: record isolated $G$ output, isolated $V$ evaluation, and full CasIA output.
+\item \textbf{Level 1 (behavioral gain)}: count $n_\text{joint}$---tasks correctly solved by CasIA but not by any individual component. Test significance via McNemar's test.
+\item \textbf{Level 2 (error-floor reduction)}: identify the generator's blind-spot region $E_{\thetaG}$ (tasks where $G$ fails consistently across 5 runs). Compute AUROC/AUPRC for error detection under self-validation vs.\ cross-validation. Compare via DeLong test.
+\item \textbf{Level 3 (information gain)}: estimate $I(T; Y, V_\text{cross})$ vs.\ $I(T; Y, V_\text{self})$ via plugin estimators on discretized outputs.
+\item \textbf{Level 5 (PID decomposition)}: discretize and compute PID using Bertschinger et al.~\cite{bertschinger2014pid}. Report $\mathrm{Red}$, $\mathrm{Unq}_G$, $\mathrm{Unq}_V$, $\mathrm{Syn}$ and their ratio to $I(T; S_G, S_V)$. (Level~4---robustness under stress---is assessed in Experiment~2 via poisoned-context tests.)
+\item Report functional complementarity proxy: $\varphi$-correlation between $e_G$ and $e_V$.
+\end{enumerate}
+
+\textbf{Matched-compute baselines.} To isolate CasIA's sources of gain, baselines are organized in two tiers:
+
+\emph{Homogeneous baselines} (single model, matched tokens): self-consistency ($n=20$ CoT with majority vote), self-verification (forward + backward), multi-agent debate (2 instances same model, 2 rounds), learned verifier (trained binary classifier on model outputs).
+
+\emph{Heterogeneous ensemble baseline} (multiple models, matched tokens, no structured interaction): the same $G$ and $V$ models used in CasIA, generating independently on each task, aggregated by majority vote or best-of-$N$ selection. Total compute equalized with CasIA.
+
+\emph{Extended reasoning baseline} (single model, matched tokens, deep inference): a single frontier model allocated the full CasIA token budget as extended chain-of-thought reasoning (o1-style or equivalent), with no structural separation. This baseline directly tests whether CasIA's diagnostic advantage survives comparison against test-time compute scaling within a single representational space. If extended reasoning matches CasIA under matched compute, the practical case for structural separation is weakened regardless of the formal framework's validity. Token budget equalization: the total token count includes all CasIA iterations, inter-component communication, and diagnostic logs; for models with internal ``thinking tokens'' not visible in the API response, the budget is matched using the total token count reported by the API (including reasoning tokens) rather than only the visible output.
+
+These three tiers isolate CasIA's sources of gain: if CasIA beats homogeneous baselines but not the heterogeneous ensemble, the gain is from model diversity alone. If CasIA beats the heterogeneous ensemble but not the extended reasoning baseline, structural separation helps but test-time compute scaling within a single model is equally effective. Only if CasIA beats all three does the structured interaction protocol contribute diagnostic information beyond what either diversity or depth alone provides.
+
+\textbf{Success criteria (pre-registered).} The primary criteria are behavioral:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item \emph{Behavioral gain}: $n_\text{joint} > 0$ with $p < 0.01$ (McNemar's test).
+\item \emph{Error-floor reduction}: AUROC for cross-validation error detection significantly exceeds self-validation AUROC ($p < 0.05$, DeLong test).
+\end{enumerate}
+If both primary criteria are met, secondary analyses are reported:
+\begin{enumerate}[leftmargin=*,itemsep=2pt,start=3]
+\item \emph{Information gain}: $I(T; Y, V_\text{cross}) > I(T; Y, V_\text{self})$ with 95\% bootstrap CI not crossing zero. Informative about magnitude but dependent on discretization choices; supports rather than establishes primary findings.
+\item \emph{PID stability}: $\mathrm{Syn}/I > 0$ with $p < 0.01$ under permutation test (1000 permutations). Cross-estimator consistency across at least two of three formulations: Williams--Beer~\cite{williams2010pid}, Bertschinger et al.~\cite{bertschinger2014pid}, and SID~\cite{lyu2025multivariate}, with consistency in the direction of the effect. Stable across bin counts $\{3,4,5,8\}$ with both uniform and quantile discretization. If estimators diverge qualitatively, this is reported as a limitation of the PID measurement, and the result rests on the primary behavioral evidence.
+\end{enumerate}
+If both primary criteria show clear gain but information gain or PID estimates are unstable, the architectural benefit is established independently of the decomposition.
+
+
+\subsection{Experiment 2: Contraction and Error Coupling}
+
+\textbf{Objective.} Verify $\mathbb{E}[v_{t+1}] > \mathbb{E}[v_t]$ when $a_t \neq \texttt{approve}$ and measure error coupling.
+
+\textbf{Protocol.} 500 tasks, $K=10$. Record $\{v_1, \ldots, v_k\}$ per task. Compute mean $\Delta v_t$. Verify $\mathbb{E}[\Delta v_t] > 0$ ($p < 0.01$, Wilcoxon signed-rank).
+
+\textbf{Error coupling.} $\varphi$-correlation and $Q$-statistic between $e_G$ and $e_V$, compared against baselines.
+
+\textbf{Failure taxonomy.} Classify non-convergence: oscillation, regulatory deadlock, degradation, trivial convergence.
+
+\textbf{Poisoned-context stress test.} 100 tasks, three conditions:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item \emph{Clean}: standard input.
+\item \emph{Symmetric poison}: plausible false premise to both $G$ and $V$. Expected: $\rho(e_G, e_V)$ increases.
+\item \emph{Asymmetric}: only $G$ receives poison; $V$ receives original. Expected: $V$ detects induced error and $\rho(e_G, e_V)$ decreases.
+\end{itemize}
+
+\textbf{Success criterion.} $\mathbb{E}[\Delta v_t] > 0$ in $\geq 80\%$ of steps where $a_t \neq \texttt{approve}$. Error coupling under asymmetric poisoning significantly lower than symmetric ($p < 0.05$).
+
+
+\subsection{Experiment 3: Structural Separation vs.\ Post-Hoc Filtering}
+\label{subsec:safety}
+
+\textbf{Objective.} Test whether structural separation is more robust than conventional filtering against adversarial inputs, and measure the degree of behavioral dependence on the regulatory component.
+
+\textbf{Protocol.} 200 adversarial prompts (jailbreaking, indirect injection, context manipulation). Compare: (A)~single model with output filter, (B)~single model with Constitutional AI self-revision, (C)~CasIA with independent $N$. To strengthen the adversarial evaluation, the prompt set should be constructed to include not only standard jailbreak taxonomies but also prompts specifically targeting the failure modes the formal framework predicts: shared-channel attacks that exploit the common input $X$ across all three components, and prompts designed to induce correlated errors across $G$ and $V$.
+
+\textbf{Regulatory dependence test.} For a subset of tasks, run CasIA with guardrails on $N$ deactivated. Measure: behavioral deviation rate, and classify deviations by type (safety violations, quality degradation, abstention changes).
+
+\emph{Interpretation.} This test measures the degree to which the system's safety-consistent behavior depends on the regulatory component $N$ as an external constraint versus being distributed across the generator-validator interaction. A low deviation rate ($<5\%$ increase in harmful outputs) would be \emph{consistent with} reduced dependence on the regulatory overlay for that specific task distribution, but would not establish internalized alignment or structural binding of safety features. Such a result could arise from multiple confounding mechanisms: conservative generator priors, validator-induced indirect steering, task contamination, benchmark ceiling effects, or undercoverage of the adversarial space. Higher deviation rates are equally informative: they quantify the regulatory component's contribution to safety and establish which behavioral classes depend most heavily on explicit normative oversight.
+
+\textbf{Success criterion (bypass reduction).} CasIA reduces bypass rate by $\geq 50\%$ relative to the strongest non-structurally-separated matched-compute baseline (the best of Baselines~A--E) without increasing false positives by more than 10\%.
+
+\textbf{Baselines.} In addition to Baselines A--C, include: (D)~a learned verifier (trained classifier on model outputs) and (E)~a monolithic judge with matched or higher inference budget, to control for the possibility that CasIA's advantage is simply ``more model calls'' rather than structural separation.
+
+
+\subsection{Pre-Registered Analysis Plan}
+\label{subsec:falsification}
+
+To reduce researcher degrees of freedom, the analysis plan distinguishes three tiers:
+
+\textbf{Primary success criteria} (both required to claim diagnostic gain):
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item Behavioral gain: $n_\text{joint} > 0$ with $p < 0.01$ (McNemar's test).
+\item Error-floor reduction: cross-validation AUROC significantly exceeds self-validation AUROC ($p < 0.05$, DeLong test).
+\end{enumerate}
+
+\textbf{Secondary analyses} (informative but not decisive):
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+\item Information gain: $I(T; Y, V_\text{cross}) > I(T; Y, V_\text{self})$ with 95\% bootstrap CI not crossing zero. This is informative about the magnitude of diagnostic advantage but depends on discretization choices that may introduce estimation bias; it therefore supports rather than establishes the primary findings.
+\item PID decomposition: $\mathrm{Syn}/I > 0$ under permutation test ($p < 0.01$), cross-estimator stability across at least two of three formulations (Williams-Beer, Bertschinger et al., SID), with consistency in the direction of the effect. PID characterizes the \emph{nature} of the gain but is not required to establish its existence.
+\item Robustness under poisoned-context stress (Experiment~2).
+\item Regulatory dependence test (Experiment~3).
+\end{itemize}
+
+\textbf{Critical falsification criteria} (if any hold, CasIA is considered unsupported for the tested configuration):
+\begin{description}[leftmargin=*,itemsep=3pt]
+\item[F1] Monolithic + self-consistency matches CasIA on both primary criteria $\Rightarrow$ structural separation unnecessary.
+\item[F3] Guardrail deactivation produces equivalent behavioral deviation in CasIA and RLHF baseline ($\alpha=0.05$, Benjamini--Hochberg) $\Rightarrow$ safety-consistent behavior depends entirely on the regulatory overlay.
+\item[F5] Internal debate on same backbone matches both primary criteria $\Rightarrow$ qualitative complementarity adds no value.
+\end{description}
+
+\textbf{Diagnostic falsification criteria} (informative, redirect research rather than invalidate):
+\begin{description}[leftmargin=*,itemsep=3pt]
+\item[F2] Hyperconnected configuration matches calibrated configuration $\Rightarrow$ bandwidth-calibration hypothesis refuted; architecture simplification possible.
+\item[F4] $\mathrm{Syn}/I \approx 0$ under permutation test $\Rightarrow$ complementarity gap with current models; motivates architecturally diverse pairings.
+\item[F6] $\mathrm{Syn}/I$ decreases monotonically over training while $\mathrm{Red}$ increases $\Rightarrow$ functional collusion detected; training protocol requires redesign.
+\end{description}
+
+\textbf{Statistical power}: $N \geq 500$ tasks, power $> 0.85$, $\alpha = 0.05$, Benjamini--Hochberg correction applied within each tier. Effect sizes and confidence intervals reported for all results, positive or negative.
+
+
+% ==================================================================
+% 9. THE COMPLEMENTARITY GAP
+% ==================================================================
+\section{The Complementarity Gap}
+\label{sec:compgap}
+
+CasIA's diagnostic framework depends on a condition that may not be satisfied by current models: functional complementarity ($\mathrm{Comp}(G,V) > 0$). This section makes the risk explicit and converts it into a measurable hypothesis.
+
+Frontier LLMs in 2025--2026 are overwhelmingly trained on overlapping corpora. Recent representational fingerprinting studies~\cite{zhang2025reef} report CKA $\approx 0.24$ between independent families (Llama-2 vs.\ Qwen, Mistral, Baichuan) but CKA $> 0.8$ between same-base derivatives, though absolute CKA values are sensitive to methodological choices~\cite{davari2022cka}.
+
+We hypothesize that off-the-shelf pairings of current models will yield low $\mathrm{Syn}/I$. The precise magnitude is the central empirical question that Phase~0 is designed to answer.
+
+Three scenarios from Phase~1:
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item $\mathrm{Syn}/I$ significantly $> 0$ and primary behavioral criteria met: Current models achieve meaningful diagnostic gain. CasIA works off-the-shelf.
+\item $\mathrm{Syn}/I$ significantly $> 0$ but small, with modest behavioral gain: A complementarity gap exists. The architecture works but models are too convergent. Motivates pairing architecturally diverse systems (transformer + state-space + symbolic).
+\item $\mathrm{Syn}/I \approx 0$ (not significant): Models are functionally equivalent despite parameter independence. Strong negative result that constrains future multi-model architectures.
+\end{enumerate}
+
+In all three scenarios, the investigation produces a publishable finding. The complementarity gap is not a weakness---it is the framework's most falsifiable prediction.
+
+Phase~0 should include at least two pairings: (a)~within-family (two transformer-based frontier models from different labs) and (b)~architecturally diverse (transformer + state-space model or neural + symbolic engine). If pairing~(b) yields significantly higher $\mathrm{Syn}/I$, the gap is attributable to representational convergence, not theoretical weakness.
+
+Notably, even if iterative test-time computation expands effective representational spaces (Appendix~\ref{app:dynamic}), the complementarity gap remains meaningful: CasIA combines independently expanded trajectories, accessing $R_{\thetaG}^\text{dyn} \cup R_{\thetaV}^\text{dyn}$, which is strictly richer than either alone when $\mathrm{Comp}(G,V) > 0$.
+
+
+% ==================================================================
+% 10. DISCUSSION
+% ==================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{What CasIA Is and What It Is Not}
+
+CasIA is a diagnostic instrument. It does not compete with Constitutional AI, RLHF, or red-teaming---these improve individual components; CasIA defines how to \emph{measure} whether those improvements hold under structural stress. A generator trained with RLHF and a regulator based on constitutional principles are, in fact, an ideal CasIA configuration.
+
+CasIA does not claim that synergistic coordination implies consciousness, understanding, or agency. Definition~\ref{def:syncoord} defines a measurable regime where multi-model interaction increases diagnostic reliability. Whether this constitutes anything deeper is a question that exceeds this work's scope.
+
+\subsection{Relationship to Test-Time Compute Scaling}
+
+Under the Markov assumption of Section~\ref{sec:problem}, test-time compute scaling is a self-interactive protocol on a single $\Rtheta$: it improves utilization of existing information but cannot introduce information that $\Rtheta$ does not contain. If the assumption holds tightly, CasIA and test-time scaling are complementary: extended reasoning within each component maximizes utilization; structural separation across components introduces genuinely new information. If iterative protocols expand the effective representational space (Appendix~\ref{app:dynamic}), the complementarity gain may be smaller but does not vanish when $\mathrm{Comp}(G,V) > 0$.
+
+A speculative but important distinction: extended reasoning may improve a model's ability to \emph{utilize} information already encoded in $\Rtheta$, including latent preconditions that standard decoding fails to retrieve. However, it does not change the \emph{content} of $\Rtheta$---the set of features, biases, and blind spots baked into the parameters by training. Structural separation, by contrast, accesses $R_{\thetaG} \cup R_{\thetaV}$, which may contain complementary features absent from either space alone. A plausible hypothesis is that extended reasoning, while expanding computational access to information already in $\Rtheta$, cannot synthesize features that are not jointly represented in any single $\Rtheta$. Cross-model validation, by contrast, can combine features from two representational spaces that may be individually insufficient but jointly sufficient---a form of \emph{representational synergy} that test-time compute within a single model may not replicate. Whether this distinction holds in practice---whether extended reasoning can effectively simulate cross-model complementarity through deeper internal search---is precisely the question that the extended reasoning baseline in Experiment~1 is designed to test. We present CasIA as a complement to test-time compute, not a substitute; the experimental protocol will determine which framing is warranted.
+
+\subsection{Threat-Channel Delimitation}
+
+Structural separation of parameters eliminates one attack surface: a compromised generator cannot alter the validator's internal representations. However, all components share the input channel~$X$. Formally: $X_\text{adv} \to (G, V, N)$ (shared channel, not blocked by parameter separation). Defense against shared-channel attacks requires complementary techniques: input sanitization, sandboxing, adversarial training of individual components.
+
+\subsection{Limitations}
+
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+\item \textbf{The formal framework rests on explicit assumptions}. The Markov chain $T \to \Rtheta \to Z$ is well-motivated for standard decoding but its applicability to iterative protocols that may expand the effective representational space is an open question (Appendix~\ref{app:dynamic}). The key quantity $I(T; \Rtheta)$ is not directly observable. The formal results are best understood as a framework making predictions precise enough to falsify, not as empirically settled ceiling results.
+\item \textbf{Functional complementarity is latent}. $\mathrm{Comp}(G,V) = I(T; R_{\thetaV} \mid R_{\thetaG})$ is the keystone condition, but available proxies (CKA, error-correlation, $n_\text{joint}$) are imperfect estimators of this quantity (Remark~\ref{rem:latentcomp}).
+\item \textbf{Hypothesis~\ref{hyp:contraction} is empirical} (Appendix~\ref{app:stability}). No guarantee current models satisfy the contraction conditions.
+\item \textbf{Computational cost}. At least three inferences per cycle, potentially multiple cycles. CasIA targets diagnostic contexts where resolution matters more than speed.
+\item \textbf{PID in high dimensions}. Current algorithms require discretization that may lose information. The evidential hierarchy (Section~\ref{subsec:hierarchy}) ensures that PID instability does not undermine the primary conclusions.
+\item \textbf{Parameter independence $\neq$ functional independence}. Models on overlapping corpora may converge despite disjoint parameters.
+\item \textbf{Negative results are informative}. Experiments may show current models do not realize significant diagnostic gain. This quantifies the complementarity gap and redirects research toward architectural diversity.
+\item \textbf{Overfitting of the diagnostic pipeline}. The complete G--V--N system, evaluated on a fixed experimental battery, could exhibit apparent diagnostic gain that does not generalize out-of-distribution. Mitigation: Experiment~1 uses held-out task splits, and the poisoned-context stress test (Experiment~2) explicitly probes out-of-distribution robustness. However, the risk that the pipeline overfits to its own evaluation regime---producing ``diagnostic gain'' that is benchmark-specific---should be assessed by replicating positive results on independently constructed task batteries.
+\item \textbf{Frontier scale viability}. The full experimental protocol (Phases~0--1) is designed for open-weight models at laboratory scale (7B--70B parameters). At frontier scale (GPT-5.x, Claude-Next class), several aspects require approximation: inference cost per iteration increases by 1--2 orders of magnitude, access to internal representations for CKA measurement may be unavailable via API, and the extended reasoning baseline requires careful token-budget matching against models with opaque internal compute allocation. Phase~2 is explicitly contingent on frontier-model partnerships and may require protocol simplifications (fewer iterations, coarser PID discretization) to remain economically viable.
+\end{enumerate}
+
+
+\subsection{Future Directions: Intra-Model Observability}
+\label{subsec:interintra}
+
+The diagnostic framework presented here operates between models. A natural extension---sketched in \S\ref{subsec:intramodel} and explored in ongoing work---would investigate whether analogous functional separation could be introduced \emph{within} a single model, potentially offering an internal control group for studying the effects of human-preference optimization. Whether such intra-model approaches can complement the inter-model diagnostics described here, or whether they introduce more complexity than they resolve, remains an open question.
+
+
+% ==================================================================
+% 11. CONCLUSIONS
+% ==================================================================
+\section{Conclusions}
+\label{sec:conclusions}
+
+This work starts from a simple observation: a system that evaluates itself has a ceiling it cannot surpass. Under the Markov assumption $T \to \Rtheta \to Z$, Proposition~\ref{prop:svbound} formalizes this ceiling as a consequence of sharing representational space, and Theorem~\ref{thm:transcript} extends it to self-interactive protocols for any fixed $\theta$. The assumption is well-motivated but not empirically verified for the full dynamic range of iterative inference; the framework is therefore best understood as making precise predictions that the experimental protocol can falsify. Proposition~\ref{prop:crossval} shows that, under complementary representations, errors invisible to self-validation become diagnosable under cross-model validation---but functional complementarity is a latent causal condition whose magnitude for current frontier models remains an open question.
+
+CasIA proposes the diagnostic instrument: structurally separate generation, validation, and regulation into components with independent parameters, and rigorously measure---through a hierarchy of behavioral gain, error-floor reduction, and robustness under stress, supported by PID decomposition---whether the combination produces diagnostic information that no component could produce alone. Six pre-registered falsification criteria (Section~\ref{subsec:falsification}) ensure that every outcome, positive or negative, closes a question.
+
+CasIA does not promise to resolve alignment. It promises to diagnose behavioral limits with greater structural resolution than self-validation permits, and to do so with instruments whose own failure modes are specified in advance.
+
+What we do not know is whether current models satisfy the conditions the framework requires. That is precisely the question the experimental protocol is designed to answer. The cost of finding out is modest (Appendix~\ref{app:economics}). The cost of not finding out---continuing to scale monolithic systems without instruments that measure whether the scaling is producing genuine reliability gains---could be significantly greater.
+
+\medskip
+\noindent\textbf{Reproducibility.} Code for proposed experiments will be published under an open license. All results will include confidence intervals and will be evaluated on public benchmarks.
+
+
+% ==================================================================
+% APPENDICES
+% ==================================================================
+\appendix
+
+\section{Economic Analysis: Cost of Falsification}
+\label{app:economics}
+
+CasIA's experimental validation is structured to minimize the cost of the first falsifiable test while providing a clear escalation path. Each phase produces publishable results regardless of outcome.
+
+\begin{table}[ht]
+\centering
+\caption{MVP Roadmap}
+\label{tab:roadmap}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Phase} & \textbf{Goal} & \textbf{Cost} & \textbf{Time} & \textbf{Deliverable} \\
+\midrule
+0 & Preliminary synergy on public APIs & $\sim$3--5K USD & 2--3 weeks & Syn/I + CKA numbers \\
+1 & Full open-source validation & $\sim$300--400K USD & 90 days & Code + paper \\
+2 & Frontier model validation & TBD & 6 months & Partnership results \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Phase~0 is immediately executable: run two frontier models via public API on a FOLIO subset ($N=200$), discretize, compute PID, report $\mathrm{Syn}/I$ with bootstrap CI. Include at least two pairings: within-family and architecturally diverse. Phase~0 cost estimate assumes API pricing as of March 2026 with $K \leq 5$ iterations per task; using open-weight models on rented GPU instances reduces cost further. Phase~1 cost falls within the range of a well-funded experimental paper (cloud compute for open-source model inference, two research engineers for 90 days, adversarial red-teaming, and infrastructure)---several orders of magnitude below model training costs.
+
+\textbf{Return on investment.} All three outcomes produce publishable results:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item Significant diagnostic gain demonstrated: justifies Phase~2.
+\item Complementarity gap quantified: redirects research toward architectural diversity.
+\item Non-convergence: constraint map for future designs identified.
+\end{enumerate}
+
+\textbf{Governance.} Project Director: C\'esar Lacruz. The author is self-funded; no external compensation is received for Phase~1. Target: top-tier venue (NeurIPS, ICML, or equivalent). IP: open publication under permissive license.
+
+
+\section{Toy Example: PID Validation on Synthetic Task}
+\label{app:toy}
+
+\subsection{Setup}
+
+Define binary variables $A, B \sim \text{Bernoulli}(0.5)$ (independent), target $T = A \oplus B$ (XOR). Two ``models'' observe partial information: $S_1$ observes $A$ with noise $\eta_1$ (bit-flip probability $p_1$); $S_2$ observes $B$ with noise $\eta_2$ (bit-flip probability $p_2$).
+
+\subsection{Analytical PID}
+
+For the noiseless case ($p_1 = p_2 = 0$): $I(T;S_1) = I(T;S_2) = 0$, $I(T;S_1,S_2) = 1$ bit. PID: $\mathrm{Red}=0$, $\mathrm{Unq}_1=\mathrm{Unq}_2=0$, $\mathrm{Syn}=1$ bit. Pure synergy.
+
+\subsection{Validation Protocol}
+
+Generate $N=10{,}000$ samples. Compute PID via Bertschinger et al.\ on the empirical contingency table. Verify estimated Syn matches analytical value. Repeat with Williams--Beer. Vary $p_1, p_2 \in \{0, 0.05, 0.1, 0.2, 0.3\}$ and trace the Syn/I curve. A ``monolithic'' setup where a single source observes both $A$ and $B$ achieves $I(T;S) = 1$ without synergy---all information is unique---illustrating why synergy specifically measures emergent information from combining independent partial views.
+
+
+\section{On the Scope of $\Rtheta$: Static vs.\ Dynamic Trajectories}
+\label{app:dynamic}
+
+\subsection{The Objection}
+
+Iterative protocols (extended CoT, multi-step revision, ``thinking'' tokens) may induce internal activation patterns beyond single-pass encoding:
+\begin{equation}
+R_\theta^\text{dyn}(X, k) \supseteq R_\theta^\text{static}(X)
+\end{equation}
+
+\subsection{Resolution}
+
+\textbf{Interpretation 1 (static $\Rtheta$):} Under standard decoding, each token is sampled from a distribution fully determined by $\theta$, $X$, and previous tokens. No external information enters. The Markov chain $T \to R_\theta^\text{static} \to Z$ holds trivially.
+
+\textbf{Interpretation 2 (dynamic $\Rtheta$):} Define $R_\theta^\text{dyn}(X) := \bigcup_{k=1}^{\infty} \{h_k : h_k = f_\theta(X, y_1, \ldots, y_{k-1})\}$. Every $h_k$ remains a function of $\theta$, $X$, and stochastic draws $\epsilon_1, \ldots, \epsilon_{k-1}$. Since $\epsilon_j \perp T \mid \theta, X$, the Markov chain $T \to R_\theta^\text{dyn} \to Z$ holds, and:
+\begin{equation}
+I(T; Z) \leq I(T; R_\theta^\text{dyn})
+\end{equation}
+
+The ceiling may be higher ($I(T; R_\theta^\text{dyn}) \geq I(T; R_\theta^\text{static})$) but remains a function of $\theta$ alone. Li et al.~\cite{li2024cot} proved that chain-of-thought extends constant-depth transformers from $\text{AC}^0$ to $\text{P/poly}$---a vast expansion in computational expressivity---but this expands computational access to information already encoded in $\theta$, not the information content itself.
+
+\emph{Tautology risk.} Under Interpretation~2, the bound $I(T;Z) \leq I(T; R_\theta^\text{dyn})$ is trivially true by construction, since $R_\theta^\text{dyn}$ is defined to include every intermediate state the model can visit. This means the bound no longer constrains iterative protocols in a non-trivial way---it merely says ``the model cannot extract more information than its parameters contain,'' which is true but uninformative about whether extended reasoning \emph{in practice} closes the gap between $I(T; R_\theta^\text{static})$ and $I(T; R_\theta^\text{dyn})$. The empirical question---tested in Experiment~1 via the extended reasoning baseline---is whether this gap is large enough to make structural separation unnecessary. Theorem~\ref{thm:transcript} is most informative under the static interpretation; under the dynamic interpretation, it motivates the experiment but does not settle the question.
+
+\subsection{Implications for CasIA}
+
+Under either interpretation, CasIA's diagnostic advantage holds: two models with independent $\thetaG$ and $\thetaV$ access $R_{\thetaG}^\text{dyn} \cup R_{\thetaV}^\text{dyn}$, strictly larger than either alone when $\mathrm{Comp}(G,V) > 0$.
+
+
+\section{Feedback Loop Stability Analysis}
+\label{app:stability}
+
+Algorithm~\ref{alg:casia} iterates, introducing convergence risk. This appendix analyzes stability conditions with honest distinction between provable and empirically verifiable claims. The results here motivate the design of Experiment~2 but are not core to the paper's contributions.
+
+\begin{definition}[System State]
+$s_t = (y_t, v_t, a_t, c_t) \in \mathcal{S}$, with dynamics $s_{t+1} = F(s_t, x)$.
+\end{definition}
+
+\begin{definition}[Candidate Lyapunov Function]
+\begin{equation}
+L(s_t) = (1 - v_t)^2 + \lambda\, \mathbb{1}[a_t \neq \texttt{approve}]
+\end{equation}
+where $\lambda > 0$ weights normative violation against coherence error.
+\end{definition}
+
+\begin{hypothesis}[Contraction]
+\label{hyp:contraction}
+If: (1)~$G$ incorporates feedback such that $\mathbb{E}[v_{t+1} \mid c_t] > v_t$ when $v_t < \tau$; (2)~$V$ produces reproducible scores; (3)~$N$'s approval probability increases monotonically with $v_t$ under normative compliance---then $\mathbb{E}[L(s_{t+1})] < \mathbb{E}[L(s_t)]$ for all $s_t$ with $a_t \neq \texttt{approve}$.
+\end{hypothesis}
+
+This is formulated as a hypothesis because conditions (1)--(3) are properties of specific models that must be verified empirically.
+
+\begin{proposition}[Contraction under Linear Feedback]
+\label{prop:linearcontraction}
+Consider the linearized validation dynamics $v_{t+1} = v_t + \beta(1 - v_t) - \gamma\eta_t$, where $\beta \in (0,1)$ is the generator's receptiveness, $\gamma > 0$ scales noise, and $\eta_t$ is zero-mean with $|\eta_t| \leq \eta_\text{max}$. Then:
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\item Expected score converges to $v^* = 1$ at rate $(1-\beta)^t$.
+\item $\mathbb{E}[L(v_{t+1})] \leq (1-\beta)^2 L(v_t) + \gamma^2 \eta_\text{max}^2$.
+\item Convergence neighborhood radius: $r = \sqrt{\gamma\eta_\text{max}} / \sqrt{1 - (1-\beta)^2}$.
+\end{enumerate}
+For plausible values ($\beta=0.3$, $\gamma=0.1$, $\eta_\text{max}=1$, $v_0=0.4$): $r \approx 0.13$ and $k^* \leq 4$ steps. The full nonlinear case requires empirical verification (Experiment~2 in Section~\ref{sec:experiments}).
+\end{proposition}
+
+
+% ==================================================================
+% REFERENCES
+% ==================================================================
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{37}
+
+\bibitem[Williams and Beer(2010)]{williams2010pid}
+Williams, P.~L. and Beer, R.~D. (2010).
+\newblock Nonnegative decomposition of multivariate information.
+\newblock \emph{arXiv:1004.2515}.
+
+\bibitem[Bertschinger et al.(2014)]{bertschinger2014pid}
+Bertschinger, N., Rauh, J., Olbrich, E., Jost, J., and Ay, N. (2014).
+\newblock Quantifying unique information.
+\newblock \emph{Entropy}, 16(4):2161--2183.
+
+\bibitem[Timme et al.(2014)]{timme2014synergy}
+Timme, N., Alford, W., Flecker, B., and Beggs, J.~M. (2014).
+\newblock Synergy, redundancy, and multivariate information measures.
+\newblock \emph{J.\ Computational Neuroscience}, 36(2):119--140.
+
+\bibitem[Bai et al.(2022)]{bai2022constitutional}
+Bai, Y., Kadavath, S., Kundu, S., et al. (2022).
+\newblock Constitutional AI: Harmlessness from AI Feedback.
+\newblock \emph{arXiv:2212.08073}.
+
+\bibitem[Wang et al.(2023)]{wang2023selfconsistency}
+Wang, X., Wei, J., Schuurmans, D., et al. (2023).
+\newblock Self-Consistency Improves Chain of Thought Reasoning.
+\newblock \emph{ICLR 2023}.
+
+\bibitem[Weng et al.(2023)]{weng2023selfverification}
+Weng, Y., Zhu, M., Xia, F., et al. (2023).
+\newblock Large Language Models are Better Reasoners with Self-Verification.
+\newblock \emph{Findings of EMNLP 2023}.
+
+\bibitem[Shazeer et al.(2017)]{shazeer2017moe}
+Shazeer, N., Mirhoseini, A., Maziarz, K., et al. (2017).
+\newblock Outrageously Large Neural Networks: The Sparsely-Gated MoE Layer.
+\newblock \emph{ICLR 2017}.
+
+\bibitem[Fedus et al.(2022)]{fedus2022switch}
+Fedus, W., Zoph, B., and Shazeer, N. (2022).
+\newblock Switch Transformers.
+\newblock \emph{JMLR}, 23(120):1--39.
+
+\bibitem[Irving et al.(2018)]{irving2018debate}
+Irving, G., Christiano, P., and Amodei, D. (2018).
+\newblock AI Safety via Debate.
+\newblock \emph{arXiv:1805.00899}.
+
+\bibitem[Du et al.(2023)]{du2023debate}
+Du, Y., Li, S., Torralba, A., Tenenbaum, J.~B., and Mordatch, I. (2023).
+\newblock Improving Factuality and Reasoning through Multiagent Debate.
+\newblock \emph{arXiv:2305.14325}.
+
+\bibitem[Du et al.(2024)]{du2024debate}
+Du, Y., Li, S., Torralba, A., Tenenbaum, J., and Mordatch, I. (2024).
+\newblock Improving Factuality and Reasoning through Multiagent Debate.
+\newblock \emph{ICML 2024}.
+
+\bibitem[Cobbe et al.(2021)]{cobbe2021verifiers}
+Cobbe, K., Kosaraju, V., Bavarian, M., et al. (2021).
+\newblock Training Verifiers to Solve Math Word Problems.
+\newblock \emph{arXiv:2110.14168}.
+
+\bibitem[Han et al.(2022)]{han2022folio}
+Han, S., Schoelkopf, H., Zhao, Y., et al. (2022).
+\newblock FOLIO: Natural Language Reasoning with First-Order Logic.
+\newblock \emph{arXiv:2209.00840}.
+
+\bibitem[Baars(1988)]{baars1988gwt}
+Baars, B.~J. (1988).
+\newblock \emph{A Cognitive Theory of Consciousness}.
+\newblock Cambridge University Press.
+
+\bibitem[Kahneman(2011)]{kahneman2011thinking}
+Kahneman, D. (2011).
+\newblock \emph{Thinking, Fast and Slow}.
+\newblock Farrar, Straus and Giroux.
+
+\bibitem[Lin et al.(2022)]{lin2022truthfulqa}
+Lin, S., Hilton, J., and Evans, O. (2022).
+\newblock TruthfulQA: Measuring How Models Mimic Human Falsehoods.
+\newblock \emph{ACL 2022}.
+
+\bibitem[Cover and Thomas(2006)]{cover2006elements}
+Cover, T.~M. and Thomas, J.~A. (2006).
+\newblock \emph{Elements of Information Theory}.
+\newblock Wiley-Interscience, 2nd edition.
+
+\bibitem[Zhang et al.(2025)]{zhang2025reef}
+Zhang, J., Wang, D., et al. (2025).
+\newblock REEF: Representation Encoding Fingerprints for LLMs.
+\newblock \emph{ICLR 2025 (Oral)}.
+
+\bibitem[Davari et al.(2022)]{davari2022cka}
+Davari, M., Horoi, S., Shabanian, S., et al. (2022).
+\newblock Reliability of CKA as a Similarity Measure in Deep Learning.
+\newblock \emph{arXiv:2210.16156}.
+
+\bibitem[Lyu et al.(2025)]{lyu2025multivariate}
+Lyu, X., Clark, A., and Raviv, N. (2025).
+\newblock Multivariate PID: Constructions, Inconsistencies, and Alternatives.
+\newblock \emph{arXiv:2508.05530}.
+
+\bibitem[Greenblatt et al.(2024)]{greenblatt2024control}
+Greenblatt, R., Shlegeris, B., Sachan, K., and Roger, F. (2024).
+\newblock AI Control: Improving Safety Despite Intentional Subversion.
+\newblock \emph{ICML 2024 (Oral)}.
+
+\bibitem[Meta(2025)]{meta2025llamafirewall}
+Meta (2025).
+\newblock LlamaFirewall: Open Source Guardrail System for Secure AI Agents.
+\newblock \emph{arXiv:2505.03574}.
+
+\bibitem[Anthropic(2026)]{anthropic2026classifiers}
+Anthropic (2026).
+\newblock Constitutional Classifiers++: Efficient Defenses against Universal Jailbreaks.
+\newblock \emph{arXiv:2601.04603}.
+
+\bibitem[Bhattarai and Vu(2025)]{bhattarai2025trinity}
+Bhattarai, B. and Vu, M. (2025).
+\newblock Trustworthy Agentic AI Requires Deterministic Architectural Boundaries.
+\newblock \emph{arXiv:2602.09947}.
+
+\bibitem[Kumar et al.(2025)]{kumar2025score}
+Kumar, A., et al. (2025).
+\newblock Training Language Models to Self-Correct via RL.
+\newblock \emph{ICLR 2025 (Oral)}.
+
+\bibitem[DeepSeek-AI(2025)]{deepseek2025r1}
+DeepSeek-AI (2025).
+\newblock DeepSeek-R1: Incentivizing Reasoning Capability via RL.
+\newblock \emph{Nature, 2025. arXiv:2501.12948}.
+
+\bibitem[Li et al.(2024)]{li2024cot}
+Li, Z., Huang, B., et al. (2024).
+\newblock Chain of Thought Empowers Transformers to Solve Inherently Serial Problems.
+\newblock \emph{ICLR 2024}.
+
+\bibitem[Huang et al.(2024)]{huang2024selfcorrect}
+Huang, J., et al. (2024).
+\newblock Large Language Models Cannot Self-Correct Reasoning Yet.
+\newblock \emph{ICLR 2024}.
+
+\bibitem[Kamoi et al.(2024)]{kamoi2024selfcorrect}
+Kamoi, R., Raman, S., et al. (2024).
+\newblock When Can LLMs Actually Correct Their Own Mistakes?
+\newblock \emph{TACL 2024}.
+
+\bibitem[Wang et al.(2024)]{wang2024rethinking}
+Wang, Y., et al. (2024).
+\newblock Rethinking the Bounds of LLM Reasoning: Are Multi-Agent Discussions the Key?
+\newblock \emph{ACL 2024}.
+
+\bibitem[Wang et al.(2025)]{wang2025moa}
+Wang, J., et al. (2025).
+\newblock Mixture-of-Agents Enhances Large Language Model Capabilities.
+\newblock \emph{ICLR 2025. arXiv:2406.04692}.
+
+\bibitem[Liang et al.(2024)]{liang2024debate}
+Liang, T., et al. (2024).
+\newblock Encouraging Divergent Thinking through Multi-Agent Debate.
+\newblock \emph{EMNLP 2024}.
+
+\bibitem[Li et al.(2026)]{li2026agentscaling}
+Li, Y., et al. (2026).
+\newblock Understanding Agent Scaling via Diversity.
+\newblock \emph{arXiv:2602.03794}.
+
+\bibitem[Zhang et al.(2026)]{zhang2026ensemble}
+Zhang, X., et al. (2026).
+\newblock An Information Theoretic View of LLM Ensemble Selection.
+\newblock \emph{arXiv:2602.08003}.
+
+\bibitem[Anthropic(2025)]{anthropic2025alignment}
+Anthropic (2025).
+\newblock Emergent Misalignment from Reward Hacking.
+\newblock \emph{arXiv:2511.18397}.
+
+\bibitem[Payne(2026)]{payne2026nuclear}
+Payne, K. (2026).
+\newblock Nuclear Wargames with Large Language Models.
+\newblock King's College London. \emph{arXiv:2602.14740}.
+
+\bibitem[Faes et al.(2025)]{faes2025pird}
+Faes, L., et al. (2025).
+\newblock Partial Information Rate Decomposition for dynamic processes.
+
+\end{thebibliography}
+
+\end{document}
